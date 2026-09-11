@@ -18,7 +18,7 @@ from voice_service import VoiceRecognitionService
 from hotkey_manager import GlobalHotkeyManager, VK_TABLE
 from settings_manager import load_settings, save_settings
 from settings_window import SettingsWindow
-from logger import log_info, log_error, log_warning
+from logger import log_info, log_error, log_warning, set_file_logging
 
 
 def parse_coordinate_string(text: str):
@@ -106,6 +106,11 @@ class MortarCalcWidget(tk.Tk):
         super().__init__()
 
         self.settings = load_settings()
+        # Enforce log settings (file logging is OFF by default)
+        set_file_logging(
+            self.settings.get("enable_logging", False),
+            max_bytes=self.settings.get("log_max_size_kb", 256) * 1024
+        )
         log_info("Starting Wardogs Mortar Calculator (Resizable Mini-HUD)...")
 
         # Tactical Palette
@@ -530,8 +535,10 @@ class MortarCalcWidget(tk.Tk):
 
         if self._opacity_timer:
             self.after_cancel(self._opacity_timer)
-        self._opacity_timer = self.after(900, lambda: self.lbl_title.config(text="WD CALC", fg=self.COLOR_ACCENT))
+        self._opacity_timer = self.after(900, self._finish_opacity_change)
 
+    def _finish_opacity_change(self):
+        self.lbl_title.config(text="WD CALC", fg=self.COLOR_ACCENT)
         save_settings(self.settings)
 
     def toggle_compact_mode(self):

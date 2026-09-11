@@ -11,7 +11,11 @@ from tkinter import ttk, messagebox
 
 from voice_service import get_available_input_devices
 from hotkey_manager import VK_TABLE
-from logger import log_info, log_error, get_recent_logs, subscribe_to_logs, unsubscribe_from_logs, clear_log_file, LOG_FILE
+from logger import (
+    log_info, log_error, get_recent_logs, subscribe_to_logs,
+    unsubscribe_from_logs, clear_log_file, set_file_logging,
+    is_file_logging_enabled, get_log_file_size_kb, LOG_FILE
+)
 from settings_manager import save_settings
 
 
@@ -341,7 +345,7 @@ class SettingsWindow(tk.Toplevel):
         self.btn_toggle_test.pack(fill=tk.X, padx=10, pady=(2, 6))
 
         # ==========================================
-        # SECTION 5: SYSTEM LOGS
+        # SECTION 5: SYSTEM LOGS & RETENTION
         # ==========================================
         card_log = tk.Frame(main_frame, bg=self.COLOR_CARD, highlightbackground=self.COLOR_CARD_BORDER, highlightthickness=1)
         card_log.pack(fill=tk.BOTH, expand=True, pady=(0, 6))
@@ -387,6 +391,34 @@ class SettingsWindow(tk.Toplevel):
             cursor="hand2",
             command=self._clear_logs
         ).pack(side=tk.LEFT, padx=2)
+
+        # File logging toggle & size indicator
+        log_ctrl_row = tk.Frame(card_log, bg=self.COLOR_CARD)
+        log_ctrl_row.pack(fill=tk.X, padx=10, pady=(2, 4))
+
+        self.log_enabled_var = tk.BooleanVar(value=self.main_app.settings.get("enable_logging", False))
+        chk_log = tk.Checkbutton(
+            log_ctrl_row,
+            text="Save to disk (mortar_calc.log)",
+            variable=self.log_enabled_var,
+            font=("Segoe UI", 8),
+            bg=self.COLOR_CARD,
+            fg=self.COLOR_TEXT,
+            selectcolor="#0c0e12",
+            activebackground=self.COLOR_CARD,
+            activeforeground=self.COLOR_TEXT,
+            command=self._on_toggle_file_logging
+        )
+        chk_log.pack(side=tk.LEFT)
+
+        self.lbl_log_size = tk.Label(
+            log_ctrl_row,
+            text=self._get_size_display_text(),
+            font=("Consolas", 7),
+            fg=self.COLOR_MUTED,
+            bg=self.COLOR_CARD
+        )
+        self.lbl_log_size.pack(side=tk.RIGHT)
 
         self.txt_log = tk.Text(
             card_log,
@@ -573,25 +605,52 @@ class SettingsWindow(tk.Toplevel):
     def _on_new_log_async(self, log_msg):
         self.after(0, lambda: self._append_log_line(log_msg))
 
+    def _get_size_display_text(self):
+        size_kb = get_log_file_size_kb()
+        status = "Active" if self.log_enabled_var.get() else "Off"
+        return f"Disk: {size_kb} KB ({status}) | Max 256 KB"
+
+    def _update_log_size_ui(self):
+        if hasattr(self, 'lbl_log_size') and self.winfo_exists():
+            try:
+                self.lbl_log_size.config(text=self._get_size_display_text())
+            except Exception:
+                pass
+
+    def _on_toggle_file_logging(self):
+        enabled = self.log_enabled_var.get()
+        set_file_logging(enabled)
+        self.main_app.settings["enable_logging"] = enabled
+        self._update_log_size_ui()
+
     def _append_log_line(self, log_msg):
         if not self.winfo_exists():
             return
         try:
             self.txt_log.insert(tk.END, log_msg + "\n")
             self.txt_log.see(tk.END)
+            self._update_log_size_ui()
         except Exception:
             pass
 
     def _clear_logs(self):
         clear_log_file()
         self.txt_log.delete("1.0", tk.END)
+        self._update_log_size_ui()
+        messagebox.showinfo("Logs Cleared", "Log file and memory buffer have been reset to 0 KB.", parent=self)
 
     def _open_log_file(self):
-        if os.path.exists(LOG_FILE):
+        if os.path.exists(LOG_FILE) and os.path.getsize(LOG_FILE) > 0:
             try:
                 os.startfile(LOG_FILE)
             except Exception as e:
                 log_error(f"Failed to open log file: {e}")
+        else:
+            messagebox.showinfo(
+                "No Log File",
+                "Log file is empty or file logging is currently disabled.\nEnable 'Save to disk' to write logs.",
+                parent=self
+            )
 
     def _save_and_apply(self):
         disp = self.combo_var.get()
@@ -608,6 +667,12 @@ class SettingsWindow(tk.Toplevel):
 
         self.main_app.settings["engine"] = self.selected_engine
         self.main_app.settings["language"] = self.current_test_lang
+        
+        # Save logging preference
+        is_logging = self.log_enabled_var.get()
+        self.main_app.settings["enable_logging"] = is_logging
+        set_file_logging(is_logging)
+
         save_settings(self.main_app.settings)
 
         messagebox.showinfo("Settings Saved", "Settings & PTT Hotkeys saved successfully!", parent=self)
