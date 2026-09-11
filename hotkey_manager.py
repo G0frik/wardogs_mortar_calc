@@ -2,6 +2,7 @@
 GLOBAL HOTKEY & PUSH-TO-TALK MANAGER (WINDOWS)
 Uses lightweight GetAsyncKeyState queries (0% CPU, no DLL injection, no hooks).
 Supports configurable Push-To-Talk for General, Start-only, and Target-only.
+Provides interactive keybinding detection, key name formatting, and unbinding.
 """
 
 import ctypes
@@ -11,41 +12,142 @@ from logger import log_info, log_warning
 
 user32 = ctypes.windll.user32
 
-# Friendly name to Windows Virtual-Key code mapping
+# Comprehensive Virtual-Key mapping (canonical lowercase name -> VK code)
 VK_TABLE = {
     "none": 0,
-    "capslock": 0x14,
-    "f2": 0x71,
-    "f3": 0x72,
-    "f4": 0x73,
-    "f5": 0x74,
-    "v": 0x56,
-    "b": 0x42,
-    "c": 0x43,
-    "t": 0x54,
-    "g": 0x47,
-    "x": 0x58,
-    "z": 0x5A,
-    "q": 0x51,
-    "e": 0x45,
-    "1": 0x31,
-    "2": 0x32,
-    "3": 0x33,
-    "4": 0x34,
-    "numpad0": 0x60,
-    "numpad1": 0x61,
-    "numpad2": 0x62,
-    "numpad3": 0x63,
+    # Mouse buttons
     "mouse4": 0x05,         # Mouse XBUTTON1 (side button back)
     "mouse5": 0x06,         # Mouse XBUTTON2 (side button forward)
     "middle_mouse": 0x04,   # Mouse scroll wheel click
-    "alt": 0x12,
-    "ctrl": 0x11,
+    "right_mouse": 0x02,    # Right mouse button
+    # Modifiers & navigation
+    "capslock": 0x14,
+    "space": 0x20,
+    "tab": 0x09,
     "shift": 0x10,
-    "tab": 0x09
+    "ctrl": 0x11,
+    "alt": 0x12,
+    "tilde": 0xC0,
+    "enter": 0x0D,
+    "insert": 0x2D,
+    "home": 0x24,
+    "end": 0x23,
+    "pageup": 0x21,
+    "pagedown": 0x22,
+    "escape": 0x1B,
+    "backspace": 0x08,
+    "delete": 0x2E,
 }
 
-REVERSE_VK_TABLE = {v: k for k, v in VK_TABLE.items()}
+# F1 - F12
+for i in range(1, 13):
+    VK_TABLE[f"f{i}"] = 0x70 + (i - 1)
+
+# Letters A - Z
+for i in range(26):
+    VK_TABLE[chr(ord('a') + i)] = 0x41 + i
+
+# Digits 0 - 9
+for i in range(10):
+    VK_TABLE[str(i)] = 0x30 + i
+    VK_TABLE[f"numpad{i}"] = 0x60 + i
+
+# Common punctuation
+VK_TABLE.update({
+    "semicolon": 0xBA,
+    "equal": 0xBB,
+    "comma": 0xBC,
+    "minus": 0xBD,
+    "period": 0xBE,
+    "slash": 0xBF,
+    "bracket_left": 0xDB,
+    "backslash": 0xDC,
+    "bracket_right": 0xDD,
+    "quote": 0xDE
+})
+
+# Reverse lookup for known VKs
+REVERSE_VK_TABLE = {v: k for k, v in VK_TABLE.items() if v != 0}
+
+DISPLAY_NAMES = {
+    "none": "UNBOUND",
+    "mouse4": "MOUSE 4",
+    "mouse5": "MOUSE 5",
+    "middle_mouse": "MIDDLE CLICK",
+    "right_mouse": "RIGHT CLICK",
+    "capslock": "CAPS LOCK",
+    "space": "SPACE",
+    "tab": "TAB",
+    "shift": "SHIFT",
+    "ctrl": "CTRL",
+    "alt": "ALT",
+    "tilde": "~ (TILDE)",
+    "escape": "ESC",
+    "backspace": "BACKSPACE",
+    "delete": "DELETE",
+    "enter": "ENTER",
+}
+
+# Pre-compiled list of VK codes to check during keybind capture
+CHECKED_VKS = [
+    0x04,  # Middle mouse
+    0x05,  # Mouse 4
+    0x06,  # Mouse 5
+    0x02,  # Right mouse
+    0x1B,  # Escape (unbind)
+    0x08,  # Backspace (unbind)
+    0x2E,  # Delete (unbind)
+    0x14,  # CapsLock
+    0x20,  # Space
+    0x09,  # Tab
+    0x10,  # Shift
+    0x11,  # Ctrl
+    0x12,  # Alt
+    0xC0,  # Tilde
+    0x0D,  # Enter
+]
+CHECKED_VKS += list(range(0x70, 0x7C))  # F1 - F12
+CHECKED_VKS += list(range(0x41, 0x5B))  # A - Z
+CHECKED_VKS += list(range(0x30, 0x3A))  # 0 - 9
+CHECKED_VKS += list(range(0x60, 0x6A))  # Numpad 0 - 9
+CHECKED_VKS += [0x21, 0x22, 0x23, 0x24, 0x2D]  # PageUp, PageDown, End, Home, Insert
+
+
+def vk_to_storage_name(vk: int) -> str:
+    """Converts a VK code to internal lowercase key string (e.g. 'mouse4', 'v', 'f2')."""
+    if vk == 0:
+        return "none"
+    if vk in REVERSE_VK_TABLE:
+        return REVERSE_VK_TABLE[vk]
+    # Fallback to Windows scan code
+    scan = user32.MapVirtualKeyW(vk, 0)
+    buf = ctypes.create_unicode_buffer(32)
+    if user32.GetKeyNameTextW(scan << 16, buf, 32) > 0:
+        name = buf.value.lower().replace(" ", "_")
+        VK_TABLE[name] = vk
+        REVERSE_VK_TABLE[vk] = name
+        return name
+    return f"vk_{hex(vk)}"
+
+
+def storage_name_to_vk(name: str) -> int:
+    """Converts a storage string name to VK code."""
+    if not name:
+        return 0
+    return VK_TABLE.get(str(name).strip().lower(), 0)
+
+
+def format_key_display(name_or_vk) -> str:
+    """Returns a user-friendly display string for keybind buttons (e.g. 'MOUSE 4', 'V', 'UNBOUND')."""
+    if isinstance(name_or_vk, int):
+        name = vk_to_storage_name(name_or_vk)
+    else:
+        name = str(name_or_vk or "").strip().lower()
+    if not name or name in ("none", "0", ""):
+        return "UNBOUND"
+    if name in DISPLAY_NAMES:
+        return DISPLAY_NAMES[name]
+    return name.upper().replace("_", " ")
 
 
 class GlobalHotkeyManager:
@@ -59,9 +161,9 @@ class GlobalHotkeyManager:
 
         # Configured bindings: role -> vk_code
         self.bindings = {
-            "general": VK_TABLE.get("f2", 0x71),
-            "start": VK_TABLE.get("none", 0),
-            "target": VK_TABLE.get("none", 0)
+            "general": storage_name_to_vk("f2"),
+            "start": storage_name_to_vk("b"),
+            "target": storage_name_to_vk("v")
         }
 
         # Key state tracking: role -> is_down
@@ -74,11 +176,11 @@ class GlobalHotkeyManager:
         self.running = False
         self.thread = None
 
-    def configure(self, general_key="f2", start_key="none", target_key="none"):
+    def configure(self, general_key="f2", start_key="b", target_key="v"):
         """Configures hotkeys by name."""
-        self.bindings["general"] = VK_TABLE.get(str(general_key).lower(), 0)
-        self.bindings["start"] = VK_TABLE.get(str(start_key).lower(), 0)
-        self.bindings["target"] = VK_TABLE.get(str(target_key).lower(), 0)
+        self.bindings["general"] = storage_name_to_vk(general_key)
+        self.bindings["start"] = storage_name_to_vk(start_key)
+        self.bindings["target"] = storage_name_to_vk(target_key)
         log_info(f"Hotkeys configured: General={general_key}, Start={start_key}, Target={target_key}")
 
     def start(self):

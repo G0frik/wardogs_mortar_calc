@@ -36,9 +36,9 @@ No coding knowledge required. Follow these steps:
 | **Resize** | Drag the bottom-right corner grip (`◢`) |
 | **Mini / Full Mode** | Click `▼` or `▲` to toggle compact mode |
 | **Settings Panel** | Click `⚙️` or press <kbd>F3</kbd> |
-| **General PTT** | Hold <kbd>F2</kbd> (or click `🎙️ MIC`) |
-| **Target PTT** | Hold <kbd>V</kbd> while calling out target digits |
-| **Start PTT** | Hold <kbd>B</kbd> while calling out mortar position |
+| **General PTT** | Hold <kbd>F2</kbd> (Interactive keybind: click to bind any key/Mouse 4/5 or ✕ to unbind) |
+| **Target PTT** | Hold <kbd>V</kbd> while calling out target digits (Rebindable / Unbindable) |
+| **Start PTT** | Hold <kbd>B</kbd> while calling out mortar position (Rebindable / Unbindable) |
 
 ---
 
@@ -97,9 +97,9 @@ Switch language with the `🇺🇦 UA` / `🇬🇧 EN` buttons.
 | **Зміна розміру** | Тягніть за правий нижній кут (`◢`) |
 | **Міні-режим** | Клік по кнопці `▼` або `▲` для згортання/розгортання |
 | **Налаштування** | Клік по `⚙️` або клавіша <kbd>F3</kbd> |
-| **Загальний PTT** | Затиснути <kbd>F2</kbd> (або клік по `🎙️ MIC`) |
-| **PTT для Ціль** | Затисніть <kbd>V</kbd> і продиктуйте цифри цілі |
-| **PTT для Старт** | Затисніть <kbd>B</kbd> і продиктуйте координати міномета |
+| **Загальний PTT** | Затиснути <kbd>F2</kbd> (Інтерактивний бінд: клікніть для призначення будь-якої клавіші/Mouse 4/5 або ✕ для очищення) |
+| **PTT для Ціль** | Затисніть <kbd>V</kbd> і продиктуйте цифри цілі (Можна змінити або зняти бінд) |
+| **PTT для Старт** | Затисніть <kbd>B</kbd> і продиктуйте координати міномета (Можна змінити або зняти бінд) |
 
 ---
 

@@ -10,7 +10,10 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 from voice_service import get_available_input_devices
-from hotkey_manager import VK_TABLE
+from hotkey_manager import (
+    VK_TABLE, format_key_display, vk_to_storage_name,
+    storage_name_to_vk, CHECKED_VKS, user32
+)
 from logger import (
     log_info, log_error, get_recent_logs, subscribe_to_logs,
     unsubscribe_from_logs, clear_log_file, set_file_logging,
@@ -38,10 +41,20 @@ class SettingsWindow(tk.Toplevel):
         self.device_map = {}
         self.selected_device_idx = main_app.settings.get("device_idx")
 
-        # PTT keys
+        # PTT keys state
         self.ptt_gen_var = tk.StringVar(value=main_app.settings.get("ptt_general_key", "f2"))
         self.ptt_start_var = tk.StringVar(value=main_app.settings.get("ptt_start_key", "b"))
         self.ptt_target_var = tk.StringVar(value=main_app.settings.get("ptt_target_key", "v"))
+
+        self.keybind_vars = {
+            "general": self.ptt_gen_var,
+            "start": self.ptt_start_var,
+            "target": self.ptt_target_var
+        }
+        self.keybind_buttons = {}
+        self.active_bind_role = None
+        self._poll_keybind_timer = None
+        self._keys_down_at_start = set()
 
         # Engine & Language
         self.selected_engine = main_app.settings.get("engine", "google")
@@ -175,32 +188,86 @@ class SettingsWindow(tk.Toplevel):
         ).pack(fill=tk.X, padx=10, pady=(0, 4))
 
         ptt_grid = tk.Frame(card_ptt, bg=self.COLOR_CARD)
-        ptt_grid.pack(fill=tk.X, padx=10, pady=(0, 6))
+        ptt_grid.pack(fill=tk.X, padx=10, pady=(0, 4))
 
-        avail_keys = sorted(list(VK_TABLE.keys()))
+        roles_info = [
+            ("general", "General PTT:", "Voice missions & tactical commands", self.COLOR_TEXT),
+            ("start", "Start-only PTT [S]:", "Forces digits directly to Start", "#7dd3fc"),
+            ("target", "Target-only PTT [T]:", "Forces digits directly to Target", "#f472b6")
+        ]
 
-        # General PTT
-        row1 = tk.Frame(ptt_grid, bg=self.COLOR_CARD)
-        row1.pack(fill=tk.X, pady=2)
-        tk.Label(row1, text="General PTT Key:", font=("Consolas", 8), fg=self.COLOR_TEXT, bg=self.COLOR_CARD, width=18, anchor="w").pack(side=tk.LEFT)
-        cb_gen = ttk.Combobox(row1, textvariable=self.ptt_gen_var, values=avail_keys, state="readonly", width=12)
-        cb_gen.pack(side=tk.LEFT, padx=4)
+        for role, label_text, sub_text, color in roles_info:
+            row = tk.Frame(ptt_grid, bg=self.COLOR_CARD)
+            row.pack(fill=tk.X, pady=3)
 
-        # Start PTT
-        row2 = tk.Frame(ptt_grid, bg=self.COLOR_CARD)
-        row2.pack(fill=tk.X, pady=2)
-        tk.Label(row2, text="Start-only PTT [S]:", font=("Consolas", 8), fg="#7dd3fc", bg=self.COLOR_CARD, width=18, anchor="w").pack(side=tk.LEFT)
-        cb_start = ttk.Combobox(row2, textvariable=self.ptt_start_var, values=avail_keys, state="readonly", width=12)
-        cb_start.pack(side=tk.LEFT, padx=4)
-        tk.Label(row2, text="(forces Start coord)", font=("Segoe UI", 7), fg=self.COLOR_MUTED, bg=self.COLOR_CARD).pack(side=tk.LEFT)
+            lbl_col = tk.Frame(row, bg=self.COLOR_CARD, width=155)
+            lbl_col.pack(side=tk.LEFT, fill=tk.Y)
+            lbl_col.pack_propagate(False)
 
-        # Target PTT
-        row3 = tk.Frame(ptt_grid, bg=self.COLOR_CARD)
-        row3.pack(fill=tk.X, pady=2)
-        tk.Label(row3, text="Target-only PTT [T]:", font=("Consolas", 8), fg="#f472b6", bg=self.COLOR_CARD, width=18, anchor="w").pack(side=tk.LEFT)
-        cb_tgt = ttk.Combobox(row3, textvariable=self.ptt_target_var, values=avail_keys, state="readonly", width=12)
-        cb_tgt.pack(side=tk.LEFT, padx=4)
-        tk.Label(row3, text="(forces Target coord)", font=("Segoe UI", 7), fg=self.COLOR_MUTED, bg=self.COLOR_CARD).pack(side=tk.LEFT)
+            tk.Label(
+                lbl_col,
+                text=label_text,
+                font=("Consolas", 8, "bold"),
+                fg=color,
+                bg=self.COLOR_CARD,
+                anchor="w"
+            ).pack(anchor="w")
+
+            tk.Label(
+                lbl_col,
+                text=sub_text,
+                font=("Segoe UI", 6, "italic"),
+                fg=self.COLOR_MUTED,
+                bg=self.COLOR_CARD,
+                anchor="w"
+            ).pack(anchor="w")
+
+            cur_key = self.keybind_vars[role].get()
+            is_unbound = (cur_key.lower() in ("none", "0", ""))
+
+            btn_slot = tk.Button(
+                row,
+                text=f"[ {format_key_display(cur_key)} ]",
+                font=("Consolas", 8, "bold"),
+                bg="#1a202c" if not is_unbound else "#161b22",
+                fg=self.COLOR_ACCENT if not is_unbound else self.COLOR_MUTED,
+                activebackground="#2d3748",
+                activeforeground="#ffffff",
+                relief=tk.FLAT,
+                width=19,
+                padx=4,
+                pady=2,
+                cursor="hand2",
+                command=lambda r=role: self._start_bind(r)
+            )
+            btn_slot.pack(side=tk.LEFT, padx=(4, 4))
+            self.keybind_buttons[role] = btn_slot
+
+            btn_unbind = tk.Button(
+                row,
+                text="✕",
+                font=("Segoe UI", 7, "bold"),
+                bg="#21262d",
+                fg=self.COLOR_RED,
+                activebackground="#3b1d1d",
+                activeforeground="#ffffff",
+                relief=tk.FLAT,
+                padx=6,
+                pady=1,
+                cursor="hand2",
+                command=lambda r=role: self._unbind_key(r)
+            )
+            btn_unbind.pack(side=tk.LEFT, padx=2)
+
+        self.lbl_bind_hint = tk.Label(
+            card_ptt,
+            text="Click slot to bind any key or mouse side button • ✕ to unbind",
+            font=("Segoe UI", 7, "italic"),
+            fg=self.COLOR_MUTED,
+            bg=self.COLOR_CARD,
+            anchor="w"
+        )
+        self.lbl_bind_hint.pack(fill=tk.X, padx=10, pady=(2, 6))
 
         # ==========================================
         # SECTION 3: SPEECH RECOGNITION ENGINE
@@ -678,7 +745,131 @@ class SettingsWindow(tk.Toplevel):
         messagebox.showinfo("Settings Saved", "Settings & PTT Hotkeys saved successfully!", parent=self)
         self._on_close()
 
+    # ==========================================
+    # INTERACTIVE KEYBIND CAPTURE LOGIC
+    # ==========================================
+    def _start_bind(self, role):
+        """Puts the selected PTT slot into listening/recording mode."""
+        if self.active_bind_role == role:
+            self._cancel_bind()
+            return
+
+        self._cancel_bind()
+
+        self.active_bind_role = role
+        btn = self.keybind_buttons.get(role)
+        if btn:
+            btn.config(
+                text="[ PRESS ANY KEY... ]",
+                bg="#4a3800",
+                fg=self.COLOR_AMBER,
+                activebackground="#4a3800",
+                activeforeground=self.COLOR_AMBER
+            )
+
+        self.lbl_bind_hint.config(
+            text=">>> Press any Key, Mouse 4/5, or ESC/✕ to Unbind <<<",
+            fg=self.COLOR_AMBER
+        )
+
+        # Snapshot keys already down at start so holding a key doesn't trigger immediately
+        self._keys_down_at_start = {
+            vk for vk in CHECKED_VKS if user32.GetAsyncKeyState(vk) & 0x8000
+        }
+        self._poll_keybind_timer = self.after(30, self._poll_keybind)
+
+    def _poll_keybind(self):
+        if not self.winfo_exists() or not self.active_bind_role:
+            return
+
+        for vk in CHECKED_VKS:
+            if vk == 0x01:  # Left mouse click ignored as keybind
+                continue
+
+            if user32.GetAsyncKeyState(vk) & 0x8000:
+                if vk in self._keys_down_at_start:
+                    continue  # Still held down from before click
+
+                # Captured key!
+                if vk in (0x1B, 0x08, 0x2E):  # ESC, Backspace, Delete -> unbind
+                    self._apply_bind(self.active_bind_role, "none")
+                else:
+                    name = vk_to_storage_name(vk)
+                    self._apply_bind(self.active_bind_role, name)
+                return
+
+        # Keep checking every 25ms
+        self._poll_keybind_timer = self.after(25, self._poll_keybind)
+
+    def _apply_bind(self, role, key_name):
+        # Resolve conflicts: if another slot already uses this key, clear it
+        if key_name != "none":
+            for other_role, var in self.keybind_vars.items():
+                if other_role != role and var.get().lower() == key_name.lower():
+                    var.set("none")
+
+        var = self.keybind_vars.get(role)
+        if var:
+            var.set(key_name)
+
+        self._sync_live_hotkeys()
+        self._cancel_bind()
+        self._refresh_keybind_ui()
+
+    def _unbind_key(self, role):
+        self._cancel_bind()
+        var = self.keybind_vars.get(role)
+        if var:
+            var.set("none")
+        self._sync_live_hotkeys()
+        self._refresh_keybind_ui()
+
+    def _cancel_bind(self):
+        if self._poll_keybind_timer:
+            try:
+                self.after_cancel(self._poll_keybind_timer)
+            except Exception:
+                pass
+            self._poll_keybind_timer = None
+
+        self.active_bind_role = None
+        self._refresh_keybind_ui()
+
+    def _sync_live_hotkeys(self):
+        """Immediately applies keybind changes to the hotkey manager for live testing."""
+        try:
+            self.main_app.hotkey_mgr.configure(
+                general_key=self.ptt_gen_var.get(),
+                start_key=self.ptt_start_var.get(),
+                target_key=self.ptt_target_var.get()
+            )
+        except Exception:
+            pass
+
+    def _refresh_keybind_ui(self):
+        if not self.winfo_exists():
+            return
+        for r, btn in self.keybind_buttons.items():
+            if self.active_bind_role == r:
+                continue
+            cur_key = self.keybind_vars[r].get()
+            is_unbound = (cur_key.lower() in ("none", "0", ""))
+            disp_text = f"[ {format_key_display(cur_key)} ]"
+            btn.config(
+                text=disp_text,
+                bg="#1a202c" if not is_unbound else "#161b22",
+                fg=self.COLOR_ACCENT if not is_unbound else self.COLOR_MUTED,
+                activebackground="#2d3748",
+                activeforeground="#ffffff"
+            )
+        if not self.active_bind_role and hasattr(self, 'lbl_bind_hint'):
+            self.lbl_bind_hint.config(
+                text="Click slot to bind any key or mouse side button • ✕ to unbind",
+                fg=self.COLOR_MUTED
+            )
+
     def _on_close(self):
+        self._cancel_bind()
         self.voice_service.on_audio_level = None
         self.voice_service.on_raw_speech = None
         unsubscribe_from_logs(self._on_new_log_async)
