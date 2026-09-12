@@ -15,7 +15,7 @@ import tkinter as tk
 from tkinter import messagebox
 
 from voice_service import VoiceRecognitionService
-from hotkey_manager import GlobalHotkeyManager, VK_TABLE
+from hotkey_manager import GlobalHotkeyManager, VK_TABLE, format_key_display
 from settings_manager import load_settings, save_settings
 from settings_window import SettingsWindow
 from logger import log_info, log_error, log_warning, set_file_logging
@@ -179,10 +179,14 @@ class MortarCalcWidget(tk.Tk):
         self.pending_voice_timer = None    # Timer ID for auto-disarm timeout
         self.PENDING_VOICE_TIMEOUT_MS = 7000  # 7 seconds window to say numbers
 
+        # Window Visibility State
+        self.is_hud_hidden = False
+
         # Global Hotkey Manager
         self.hotkey_mgr = GlobalHotkeyManager(
             on_ptt_press=self._on_global_ptt_down,
-            on_ptt_release=self._on_global_ptt_up
+            on_ptt_release=self._on_global_ptt_up,
+            on_toggle_hide=self._on_global_toggle_hide
         )
         self._sync_hotkeys_config()
 
@@ -204,7 +208,13 @@ class MortarCalcWidget(tk.Tk):
         gen_key = self.settings.get("ptt_general_key", "f2")
         start_key = self.settings.get("ptt_start_key", "b")
         target_key = self.settings.get("ptt_target_key", "v")
-        self.hotkey_mgr.configure(general_key=gen_key, start_key=start_key, target_key=target_key)
+        hide_key = self.settings.get("toggle_hide_key", "f4")
+        self.hotkey_mgr.configure(
+            general_key=gen_key,
+            start_key=start_key,
+            target_key=target_key,
+            toggle_hide_key=hide_key
+        )
 
     def _build_ui(self):
         # ==========================================
@@ -285,6 +295,21 @@ class MortarCalcWidget(tk.Tk):
             command=self.toggle_compact_mode
         )
         self.btn_expand.pack(side=tk.RIGHT, padx=1)
+
+        btn_hide = tk.Button(
+            self.header_bar,
+            text="─",
+            font=("Segoe UI", 7, "bold"),
+            bg=self.COLOR_HEADER,
+            fg=self.COLOR_TEXT,
+            activebackground="#2c3340",
+            relief=tk.FLAT,
+            padx=4,
+            pady=0,
+            cursor="hand2",
+            command=self.hide_hud
+        )
+        btn_hide.pack(side=tk.RIGHT, padx=1)
 
         btn_settings = tk.Button(
             self.header_bar,
@@ -628,6 +653,44 @@ class MortarCalcWidget(tk.Tk):
             self.btn_live_badge.config(text="🔴 LIVE", bg="#851d1d", fg="#ffffff")
         else:
             self.btn_live_badge.config(text="🎙️ OFF", bg="#212631", fg=self.COLOR_MUTED)
+
+    # --- WINDOW VISIBILITY / HIDE / SHOW LOGIC ---
+    def _on_global_toggle_hide(self):
+        self.after(0, self.toggle_hud_visibility)
+
+    def toggle_hud_visibility(self):
+        """Toggles the HUD overlay between hidden and visible state."""
+        if getattr(self, "is_hud_hidden", False):
+            self.show_hud()
+        else:
+            self.hide_hud()
+
+    def hide_hud(self):
+        """Hides the HUD overlay window completely from the screen."""
+        self.is_hud_hidden = True
+        self.withdraw()
+        if self.settings_window is not None and tk.Toplevel.winfo_exists(self.settings_window):
+            try:
+                self.settings_window.withdraw()
+            except Exception:
+                pass
+        hide_key = self.settings.get("toggle_hide_key", "f4")
+        log_info(f"HUD hidden. Press [{format_key_display(hide_key)}] to show again.")
+
+    def show_hud(self):
+        """Restores and shows the HUD overlay window on top."""
+        self.is_hud_hidden = False
+        self.deiconify()
+        self.lift()
+        self.attributes("-topmost", True)
+        if self.settings_window is not None and tk.Toplevel.winfo_exists(self.settings_window):
+            try:
+                self.settings_window.deiconify()
+                self.settings_window.lift()
+                self.settings_window.attributes("-topmost", True)
+            except Exception:
+                pass
+        log_info("HUD restored to screen.")
 
     def _on_voice_action_async(self, action):
         self.after(0, lambda: self._apply_voice_action(action))

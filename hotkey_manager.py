@@ -151,37 +151,42 @@ def format_key_display(name_or_vk) -> str:
 
 
 class GlobalHotkeyManager:
-    def __init__(self, on_ptt_press=None, on_ptt_release=None):
+    def __init__(self, on_ptt_press=None, on_ptt_release=None, on_toggle_hide=None):
         """
         on_ptt_press(role): role is 'general', 'start', or 'target'
         on_ptt_release(role)
+        on_toggle_hide(): called when toggle hide/show hotkey is pressed
         """
         self.on_ptt_press = on_ptt_press
         self.on_ptt_release = on_ptt_release
+        self.on_toggle_hide = on_toggle_hide
 
         # Configured bindings: role -> vk_code
         self.bindings = {
             "general": storage_name_to_vk("f2"),
             "start": storage_name_to_vk("b"),
-            "target": storage_name_to_vk("v")
+            "target": storage_name_to_vk("v"),
+            "hide": storage_name_to_vk("f4")
         }
 
         # Key state tracking: role -> is_down
         self.key_states = {
             "general": False,
             "start": False,
-            "target": False
+            "target": False,
+            "hide": False
         }
 
         self.running = False
         self.thread = None
 
-    def configure(self, general_key="f2", start_key="b", target_key="v"):
+    def configure(self, general_key="f2", start_key="b", target_key="v", toggle_hide_key="f4"):
         """Configures hotkeys by name."""
         self.bindings["general"] = storage_name_to_vk(general_key)
         self.bindings["start"] = storage_name_to_vk(start_key)
         self.bindings["target"] = storage_name_to_vk(target_key)
-        log_info(f"Hotkeys configured: General={general_key}, Start={start_key}, Target={target_key}")
+        self.bindings["hide"] = storage_name_to_vk(toggle_hide_key)
+        log_info(f"Hotkeys configured: General={general_key}, Start={start_key}, Target={target_key}, Hide={toggle_hide_key}")
 
     def start(self):
         """Starts the background polling loop."""
@@ -208,14 +213,20 @@ class GlobalHotkeyManager:
 
                 if is_down and not was_down:
                     self.key_states[role] = True
-                    if self.on_ptt_press:
+                    if role == "hide":
+                        if self.on_toggle_hide:
+                            try:
+                                self.on_toggle_hide()
+                            except Exception:
+                                pass
+                    elif self.on_ptt_press:
                         try:
                             self.on_ptt_press(role)
                         except Exception:
                             pass
                 elif not is_down and was_down:
                     self.key_states[role] = False
-                    if self.on_ptt_release:
+                    if role != "hide" and self.on_ptt_release:
                         try:
                             self.on_ptt_release(role)
                         except Exception:

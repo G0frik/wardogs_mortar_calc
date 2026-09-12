@@ -41,15 +41,17 @@ class SettingsWindow(tk.Toplevel):
         self.device_map = {}
         self.selected_device_idx = main_app.settings.get("device_idx")
 
-        # PTT keys state
+        # Hotkeys state
         self.ptt_gen_var = tk.StringVar(value=main_app.settings.get("ptt_general_key", "f2"))
         self.ptt_start_var = tk.StringVar(value=main_app.settings.get("ptt_start_key", "b"))
         self.ptt_target_var = tk.StringVar(value=main_app.settings.get("ptt_target_key", "v"))
+        self.toggle_hide_var = tk.StringVar(value=main_app.settings.get("toggle_hide_key", "f4"))
 
         self.keybind_vars = {
             "general": self.ptt_gen_var,
             "start": self.ptt_start_var,
-            "target": self.ptt_target_var
+            "target": self.ptt_target_var,
+            "hide": self.toggle_hide_var
         }
         self.keybind_buttons = {}
         self.active_bind_role = None
@@ -172,7 +174,7 @@ class SettingsWindow(tk.Toplevel):
 
         tk.Label(
             ptt_header,
-            text="2. GLOBAL PUSH-TO-TALK (PTT) KEYS",
+            text="2. HOTKEYS & PUSH-TO-TALK (PTT)",
             font=("Consolas", 9, "bold"),
             fg=self.COLOR_ACCENT,
             bg=self.COLOR_CARD
@@ -180,7 +182,7 @@ class SettingsWindow(tk.Toplevel):
 
         tk.Label(
             card_ptt,
-            text="Hold key in-game to speak. Released key calculates coordinates instantly.",
+            text="Hold PTT to speak, or use Toggle Hide key to show/hide overlay in-game.",
             font=("Segoe UI", 8, "italic"),
             fg=self.COLOR_MUTED,
             bg=self.COLOR_CARD,
@@ -193,7 +195,8 @@ class SettingsWindow(tk.Toplevel):
         roles_info = [
             ("general", "General PTT:", "Voice missions & tactical commands", self.COLOR_TEXT),
             ("start", "Start-only PTT [S]:", "Forces digits directly to Start", "#7dd3fc"),
-            ("target", "Target-only PTT [T]:", "Forces digits directly to Target", "#f472b6")
+            ("target", "Target-only PTT [T]:", "Forces digits directly to Target", "#f472b6"),
+            ("hide", "Toggle Hide / Show:", "Show or hide HUD overlay in-game", self.COLOR_AMBER)
         ]
 
         for role, label_text, sub_text, color in roles_info:
@@ -726,10 +729,11 @@ class SettingsWindow(tk.Toplevel):
             self.main_app.settings["device_idx"] = dev_info['index']
             self.main_app.settings["device_name"] = dev_info['name']
 
-        # Save PTT hotkeys
+        # Save PTT and HUD hotkeys
         self.main_app.settings["ptt_general_key"] = self.ptt_gen_var.get().lower()
         self.main_app.settings["ptt_start_key"] = self.ptt_start_var.get().lower()
         self.main_app.settings["ptt_target_key"] = self.ptt_target_var.get().lower()
+        self.main_app.settings["toggle_hide_key"] = self.toggle_hide_var.get().lower()
         self.main_app._sync_hotkeys_config()
 
         self.main_app.settings["engine"] = self.selected_engine
@@ -841,7 +845,8 @@ class SettingsWindow(tk.Toplevel):
             self.main_app.hotkey_mgr.configure(
                 general_key=self.ptt_gen_var.get(),
                 start_key=self.ptt_start_var.get(),
-                target_key=self.ptt_target_var.get()
+                target_key=self.ptt_target_var.get(),
+                toggle_hide_key=self.toggle_hide_var.get()
             )
         except Exception:
             pass

@@ -4,6 +4,13 @@ All notable changes to the War Dogs Mortar Calculator project are documented in 
 
 ---
 
+### Minimize Button & In-Game Toggle Hotkey
+- **Hide Button**: Added `─` minimize/hide button in header bar to instantly withdraw overlay from screen.
+- **Global Toggle Hotkey**: Added customizable global hotkey (default <kbd>F4</kbd>) to show or hide overlay at any time in-game.
+- **Settings Integration**: Added interactive click-to-bind, unbind `[✕]`, and persistent configuration for Hide/Show hotkey in Settings.
+
+---
+
 ### [`3bbfff8`](https://github.com/G0frik/wardogs_mortar_calc/commit/3bbfff8) - Standalone Voice Arming & Number Appending
 - **Voice Parser**: Full Ukrainian & English keyword coverage for "Start" (`старт`, `старту`, `позиція`, `міномет`, `start`, `pos`) and "Target" (`ціль`, `мішень`, `target`, `impact`).
 - **Standalone Arming**: Speaking "Start" or "Target" alone arms that field for 7 seconds with glowing visual cues (`[START ARMED]` / `[TARGET ARMED]`).

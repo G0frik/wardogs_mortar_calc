@@ -36,6 +36,7 @@ No coding knowledge required. Follow these steps:
 | **Resize** | Drag the bottom-right corner grip (`◢`) |
 | **Mini / Full Mode** | Click `▼` or `▲` to toggle compact mode |
 | **Settings Panel** | Click `⚙️` or press <kbd>F3</kbd> |
+| **Hide / Show Overlay** | Click `─` in header or press <kbd>F4</kbd> (Rebindable in Settings) |
 | **Live Voice Mode** | Click `🎙️ OFF` / `🔴 LIVE` badge in header to toggle continuous open-mic |
 | **PTT Button & Indicator** | Shows `PTT` when idle and `🔴 PUSHED` when pressed (also supports click-and-hold with mouse) |
 | **General PTT** | Hold <kbd>F2</kbd> (Interactive keybind: click to bind any key/Mouse 4/5 or ✕ to unbind) |
@@ -102,6 +103,7 @@ Switch language with the `🇺🇦 UA` / `🇬🇧 EN` buttons.
 | **Зміна розміру** | Тягніть за правий нижній кут (`◢`) |
 | **Міні-режим** | Клік по кнопці `▼` або `▲` для згортання/розгортання |
 | **Налаштування** | Клік по `⚙️` або клавіша <kbd>F3</kbd> |
+| **Сховати / Показати вікно** | Клікніть кнопку `─` у шапці або натисніть <kbd>F4</kbd> (Можна змінити бінд у Налаштуваннях) |
 | **Режим відкритого мікрофона (LIVE)** | Клікніть бейдж `🎙️ OFF` / `🔴 LIVE` для перемикання постійного прослуховування |
 | **Кнопка та індикатор PTT** | Показує `PTT` у спокої та `🔴 PUSHED` при натисканні (працює також при затисканні мишкою) |
 | **Загальний PTT** | Затиснути <kbd>F2</kbd> (Інтерактивний бінд: клікніть для призначення будь-якої клавіші/Mouse 4/5 або ✕ для очищення) |

@@ -23,6 +23,7 @@ DEFAULT_SETTINGS = {
     "ptt_general_key": "f2",    # General PTT hotkey
     "ptt_start_key": "b",       # Dedicated Start PTT hotkey
     "ptt_target_key": "v",      # Dedicated Target PTT hotkey
+    "toggle_hide_key": "f4",    # Global hotkey to toggle hide/show overlay
     "enable_logging": False,    # Disabled by default to save disk space
     "log_max_size_kb": 256      # Maximum log file size retention
 }
