@@ -36,6 +36,8 @@ No coding knowledge required. Follow these steps:
 | **Resize** | Drag the bottom-right corner grip (`◢`) |
 | **Mini / Full Mode** | Click `▼` or `▲` to toggle compact mode |
 | **Settings Panel** | Click `⚙️` or press <kbd>F3</kbd> |
+| **Live Voice Mode** | Click `🎙️ OFF` / `🔴 LIVE` badge in header to toggle continuous open-mic |
+| **PTT Button & Indicator** | Shows `PTT` when idle and `🔴 PUSHED` when pressed (also supports click-and-hold with mouse) |
 | **General PTT** | Hold <kbd>F2</kbd> (Interactive keybind: click to bind any key/Mouse 4/5 or ✕ to unbind) |
 | **Target PTT** | Hold <kbd>V</kbd> while calling out target digits (Rebindable / Unbindable) |
 | **Start PTT** | Hold <kbd>B</kbd> while calling out mortar position (Rebindable / Unbindable) |
@@ -97,6 +99,8 @@ Switch language with the `🇺🇦 UA` / `🇬🇧 EN` buttons.
 | **Зміна розміру** | Тягніть за правий нижній кут (`◢`) |
 | **Міні-режим** | Клік по кнопці `▼` або `▲` для згортання/розгортання |
 | **Налаштування** | Клік по `⚙️` або клавіша <kbd>F3</kbd> |
+| **Режим відкритого мікрофона (LIVE)** | Клікніть бейдж `🎙️ OFF` / `🔴 LIVE` для перемикання постійного прослуховування |
+| **Кнопка та індикатор PTT** | Показує `PTT` у спокої та `🔴 PUSHED` при натисканні (працює також при затисканні мишкою) |
 | **Загальний PTT** | Затиснути <kbd>F2</kbd> (Інтерактивний бінд: клікніть для призначення будь-якої клавіші/Mouse 4/5 або ✕ для очищення) |
 | **PTT для Ціль** | Затисніть <kbd>V</kbd> і продиктуйте цифри цілі (Можна змінити або зняти бінд) |
 | **PTT для Старт** | Затисніть <kbd>B</kbd> і продиктуйте координати міномета (Можна змінити або зняти бінд) |

@@ -217,7 +217,8 @@ class MortarCalcWidget(tk.Tk):
         )
         self.lbl_title.pack(side=tk.LEFT, padx=(6, 4), pady=3)
 
-        self.lbl_ptt_badge = tk.Label(
+        # 1. LIVE Mode Status / Toggle button
+        self.btn_live_badge = tk.Label(
             self.header_bar,
             text="🎙️ OFF",
             font=("Consolas", 7, "bold"),
@@ -227,8 +228,25 @@ class MortarCalcWidget(tk.Tk):
             pady=1,
             cursor="hand2"
         )
-        self.lbl_ptt_badge.pack(side=tk.LEFT, padx=2)
-        self.lbl_ptt_badge.bind("<Button-1>", lambda e: self.toggle_voice_listening())
+        self.btn_live_badge.pack(side=tk.LEFT, padx=(2, 1))
+        self.btn_live_badge.bind("<Button-1>", lambda e: self.toggle_voice_listening())
+
+        # 2. PTT Push-To-Talk Button & Indicator (Drawn as pushed ONLY while pushed)
+        self.btn_ptt_badge = tk.Label(
+            self.header_bar,
+            text="PTT",
+            font=("Consolas", 7, "bold"),
+            fg=self.COLOR_MUTED,
+            bg="#212631",
+            padx=4,
+            pady=1,
+            cursor="hand2"
+        )
+        self.btn_ptt_badge.pack(side=tk.LEFT, padx=(1, 2))
+        self.btn_ptt_badge.bind("<ButtonPress-1>", self._on_mouse_ptt_down)
+        self.btn_ptt_badge.bind("<ButtonRelease-1>", self._on_mouse_ptt_up)
+        self.btn_ptt_badge.bind("<Leave>", self._on_mouse_ptt_leave)
+        self._mouse_ptt_active = False
 
         # Header Right Controls: Settings, Expand, Close
         btn_close = tk.Button(
@@ -561,7 +579,24 @@ class MortarCalcWidget(tk.Tk):
         self.geometry(f"{w}x{h}+{cur_x}+{cur_y}")
         log_info(f"Widget mode: {'COMPACT' if self.is_compact else 'EXPANDED'}")
 
-    # --- GLOBAL PUSH-TO-TALK HOOKS ---
+    # --- PUSH-TO-TALK (PTT) HANDLERS ---
+    def _on_mouse_ptt_down(self, event=None):
+        """User clicks/holds down the PTT badge with mouse."""
+        self._mouse_ptt_active = True
+        self._apply_ptt_down_ui("general")
+        self.voice_service.start_ptt(role="general")
+
+    def _on_mouse_ptt_up(self, event=None):
+        """User releases the PTT badge."""
+        if getattr(self, "_mouse_ptt_active", False):
+            self._mouse_ptt_active = False
+            self._apply_ptt_up_ui()
+            self.voice_service.stop_ptt(role="general")
+
+    def _on_mouse_ptt_leave(self, event=None):
+        if getattr(self, "_mouse_ptt_active", False):
+            self._on_mouse_ptt_up(event)
+
     def _on_global_ptt_down(self, role):
         self.after(0, lambda: self._apply_ptt_down_ui(role))
         self.voice_service.start_ptt(role=role)
@@ -571,20 +606,22 @@ class MortarCalcWidget(tk.Tk):
         self.voice_service.stop_ptt(role=role)
 
     def _apply_ptt_down_ui(self, role):
-        badge_text = "🔴 PTT:TGT" if role == "target" else ("🔴 PTT:START" if role == "start" else "🔴 PTT")
-        self.lbl_ptt_badge.config(text=badge_text, bg="#851d1d", fg="#ffffff")
+        badge_text = "🔴 TGT" if role == "target" else ("🔴 START" if role == "start" else "🔴 PUSHED")
+        self.btn_ptt_badge.config(text=badge_text, bg="#b91c1c", fg="#ffffff")
         self.lbl_transcript.config(text=f"Recording [{role.upper()}]... speak numbers", fg=self.COLOR_ACCENT)
 
     def _apply_ptt_up_ui(self):
-        self.lbl_ptt_badge.config(text="🎙️ PTT", bg="#212631", fg=self.COLOR_MUTED)
+        # Reset PTT indicator to idle without touching the LIVE mode status button!
+        self.btn_ptt_badge.config(text="PTT", bg="#212631", fg=self.COLOR_MUTED)
         self.lbl_transcript.config(text="Transcribing...", fg=self.COLOR_AMBER)
 
     def toggle_voice_listening(self):
-        is_now = self.voice_service.toggle_listening()
+        """Toggles continuous open-mic LIVE mode."""
+        is_now = self.voice_service.toggle_continuous_listening()
         if is_now:
-            self.lbl_ptt_badge.config(text="🔴 LIVE", bg="#851d1d", fg="#ffffff")
+            self.btn_live_badge.config(text="🔴 LIVE", bg="#851d1d", fg="#ffffff")
         else:
-            self.lbl_ptt_badge.config(text="🎙️ OFF", bg="#212631", fg=self.COLOR_MUTED)
+            self.btn_live_badge.config(text="🎙️ OFF", bg="#212631", fg=self.COLOR_MUTED)
 
     def _on_voice_action_async(self, action):
         self.after(0, lambda: self._apply_voice_action(action))
@@ -763,10 +800,17 @@ class MortarCalcWidget(tk.Tk):
         self.settings_window = SettingsWindow(self, self)
 
     def _sync_mic_button_ui(self):
-        if self.voice_service.is_listening:
-            self.lbl_ptt_badge.config(text="🔴 LIVE", bg="#851d1d", fg="#ffffff")
+        if self.voice_service.is_continuous_listening:
+            self.btn_live_badge.config(text="🔴 LIVE", bg="#851d1d", fg="#ffffff")
         else:
-            self.lbl_ptt_badge.config(text="🎙️ PTT", bg="#212631", fg=self.COLOR_MUTED)
+            self.btn_live_badge.config(text="🎙️ OFF", bg="#212631", fg=self.COLOR_MUTED)
+
+        if self.voice_service.is_ptt_active:
+            role = getattr(self.voice_service, "active_ptt_role", "general")
+            badge_text = "🔴 TGT" if role == "target" else ("🔴 START" if role == "start" else "🔴 PUSHED")
+            self.btn_ptt_badge.config(text=badge_text, bg="#b91c1c", fg="#ffffff")
+        else:
+            self.btn_ptt_badge.config(text="PTT", bg="#212631", fg=self.COLOR_MUTED)
 
     def _on_closing(self):
         log_info("Closing Wardogs Mortar Calculator overlay.")

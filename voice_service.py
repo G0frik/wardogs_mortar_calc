@@ -97,7 +97,8 @@ class VoiceRecognitionService:
 
         self.current_engine = "google"  # Default 0% CPU engine
         self.current_lang = "uk"
-        self.is_listening = False
+        self.is_continuous_listening = False
+        self.is_ptt_active = False
         self.is_running = False
 
         # Audio Hardware
@@ -115,7 +116,6 @@ class VoiceRecognitionService:
         # VAD & Push-To-Talk state
         self.vad_threshold = 0.022
         self.is_speaking = False
-        self.is_ptt_active = False
         self.active_ptt_role = "general"
         self.speech_frames = []
         self.silence_frames_count = 0
@@ -127,6 +127,14 @@ class VoiceRecognitionService:
         self.transcribe_queue = queue.Queue()
         self.worker_thread = None
         self.transcribe_thread = None
+
+    @property
+    def is_listening(self):
+        return self.is_continuous_listening or self.is_ptt_active
+
+    @is_listening.setter
+    def is_listening(self, val):
+        self.is_continuous_listening = bool(val)
 
     def initialize(self, default_lang="uk", preferred_device_idx=None, engine="google"):
         """Initializes selected audio device and recognition engine with lazy loading."""
@@ -264,7 +272,11 @@ class VoiceRecognitionService:
 
     def _audio_callback(self, indata, frames, time_info, status):
         """Streaming callback from sounddevice."""
-        if self.is_listening and self.is_running:
+        if not self.is_running:
+            return
+
+        # CRITICAL: Only buffer and stream audio if PTT is actively pressed OR continuous LIVE mode is on!
+        if self.is_ptt_active or self.is_continuous_listening:
             raw_bytes = bytes(indata)
             self.audio_queue.put(raw_bytes)
 
@@ -276,21 +288,24 @@ class VoiceRecognitionService:
                     self.on_audio_level(level)
                 except Exception:
                     pass
+        elif self.on_audio_level:
+            try:
+                self.on_audio_level(0.0)
+            except Exception:
+                pass
 
     # --- PUSH-TO-TALK (PTT) METHODS ---
     def start_ptt(self, role="general"):
-        """Triggered when a PTT key is pressed down."""
+        """Triggered when a PTT key or mouse button is pressed down."""
         self.active_ptt_role = role
         self.is_ptt_active = True
         self.speech_frames = []
 
-        if not self.is_listening:
-            self.start_listening()
-
+        self._ensure_stream_started()
         self._notify_status(f"🔴 PTT [{role.upper()}]: Speaking...")
 
     def stop_ptt(self, role="general"):
-        """Triggered when a PTT key is released."""
+        """Triggered when a PTT key or mouse button is released."""
         if not self.is_ptt_active:
             return
         self.is_ptt_active = False
@@ -298,24 +313,70 @@ class VoiceRecognitionService:
         if self.speech_frames:
             full_audio = b"".join(self.speech_frames)
             self.speech_frames = []
-            if len(full_audio) >= (self.active_rate * 0.3 * 2):
+            if len(full_audio) >= (self.active_rate * 0.25 * 2):
                 if self.on_partial:
                     self.on_partial(f"Transcribing [{role.upper()}]...")
                 self.transcribe_queue.put((full_audio, role))
 
-        self._notify_status(f"Standby [{self.current_engine.upper()}]")
+        if self.is_continuous_listening:
+            self._notify_status(f"🔴 LIVE [{self.current_engine.upper()}]")
+        else:
+            self._notify_status(f"Standby [{self.current_engine.upper()}]")
+            if self.on_audio_level:
+                try: self.on_audio_level(0.0)
+                except Exception: pass
 
-    def start_listening(self):
-        """Starts audio stream and worker threads."""
-        if self.is_listening:
-            return
-
-        self.is_running = True
-        self.is_listening = True
+    # --- CONTINUOUS (LIVE OPEN-MIC) LISTENING METHODS ---
+    def start_continuous_listening(self):
+        """Turns on open-mic continuous listening (LIVE mode)."""
+        self.is_continuous_listening = True
         self.is_speaking = False
         self.speech_frames = []
         self.silence_frames_count = 0
         self.pre_speech_buffer = []
+
+        self._ensure_stream_started()
+        log_info(f"LIVE continuous voice listening started [{self.current_engine.upper()} | {self.current_lang.upper()}]")
+        self._notify_status(f"🔴 LIVE [{self.current_engine.upper()}]...")
+        return True
+
+    def stop_continuous_listening(self):
+        """Turns off open-mic continuous listening."""
+        self.is_continuous_listening = False
+        self.is_speaking = False
+        self.speech_frames = []
+        self.silence_frames_count = 0
+        self.pre_speech_buffer = []
+
+        if not self.is_ptt_active and self.on_audio_level:
+            try: self.on_audio_level(0.0)
+            except Exception: pass
+
+        log_info("LIVE continuous voice listening stopped.")
+        self._notify_status(f"Mic Muted [{self.current_engine.upper()}]")
+        return False
+
+    def toggle_continuous_listening(self):
+        """Toggles continuous open-mic listening on/off."""
+        if self.is_continuous_listening:
+            return self.stop_continuous_listening()
+        else:
+            return self.start_continuous_listening()
+
+    # Aliases for backward compatibility
+    def start_listening(self):
+        return self.start_continuous_listening()
+
+    def stop_listening(self):
+        self.is_ptt_active = False
+        return self.stop_continuous_listening()
+
+    def toggle_listening(self):
+        return self.toggle_continuous_listening()
+
+    def _ensure_stream_started(self):
+        """Starts audio stream and background worker threads if not already active."""
+        self.is_running = True
 
         if self.worker_thread is None or not self.worker_thread.is_alive():
             self.worker_thread = threading.Thread(target=self._worker_loop, daemon=True)
@@ -325,58 +386,28 @@ class VoiceRecognitionService:
             self.transcribe_thread = threading.Thread(target=self._transcribe_worker, daemon=True)
             self.transcribe_thread.start()
 
-        try:
-            if self.stream is not None:
-                try:
-                    self.stream.stop()
-                    self.stream.close()
-                except Exception: pass
-                self.stream = None
+        if self.stream is None or not self.stream.active:
+            try:
+                if self.stream is not None:
+                    try:
+                        self.stream.stop()
+                        self.stream.close()
+                    except Exception: pass
+                    self.stream = None
 
-            self.stream = sd.RawInputStream(
-                samplerate=self.active_rate,
-                blocksize=4000,
-                device=self.active_device_idx,
-                dtype='int16',
-                channels=1,
-                callback=self._audio_callback
-            )
-            self.stream.start()
-            log_info(f"Audio stream started [{self.current_engine.upper()} | {self.current_lang.upper()}]")
-            self._notify_status(f"🎙️ Listening [{self.current_engine.upper()}]...")
-        except Exception as e:
-            self.is_listening = False
-            log_error(f"Error opening audio stream: {e}")
-            self._notify_status(f"Mic error: {e}")
-
-    def stop_listening(self):
-        """Stops audio stream."""
-        self.is_listening = False
-        self.is_ptt_active = False
-        try:
-            if self.stream and self.stream.active:
-                self.stream.stop()
-        except Exception:
-            pass
-
-        if self.speech_frames:
-            full_audio = b"".join(self.speech_frames)
-            self.speech_frames = []
-            self.transcribe_queue.put((full_audio, self.active_ptt_role))
-
-        if self.on_audio_level:
-            try: self.on_audio_level(0.0)
-            except Exception: pass
-
-        log_info("Audio stream paused.")
-        self._notify_status(f"Mic Muted [{self.current_engine.upper()}]")
-
-    def toggle_listening(self):
-        if self.is_listening:
-            self.stop_listening()
-        else:
-            self.start_listening()
-        return self.is_listening
+                self.stream = sd.RawInputStream(
+                    samplerate=self.active_rate,
+                    blocksize=4000,
+                    device=self.active_device_idx,
+                    dtype='int16',
+                    channels=1,
+                    callback=self._audio_callback
+                )
+                self.stream.start()
+                log_info(f"Audio stream opened [{self.current_engine.upper()} | {self.current_lang.upper()}]")
+            except Exception as e:
+                log_error(f"Error opening audio stream: {e}")
+                self._notify_status(f"Mic error: {e}")
 
     def _worker_loop(self):
         """Processes incoming audio chunks efficiently."""
@@ -386,15 +417,16 @@ class VoiceRecognitionService:
             except queue.Empty:
                 continue
 
-            if not self.is_listening:
-                continue
-
-            # If PTT is currently active, buffer audio frames directly
+            # If PTT is currently active, buffer audio frames directly for PTT
             if self.is_ptt_active:
                 self.speech_frames.append(data)
                 continue
 
-            # Continuous listening mode
+            # If continuous LIVE mode is NOT active, discard all incoming frames completely!
+            if not self.is_continuous_listening:
+                continue
+
+            # Continuous listening mode (only runs when LIVE mode is enabled)
             if self.current_engine == "vosk":
                 self._process_vosk_chunk(data)
             else:
