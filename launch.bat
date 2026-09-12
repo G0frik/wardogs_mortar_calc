@@ -1,5 +1,6 @@
 @echo off
-start pythonw mortar_calc.py
+cd /d "%~dp0"
+start "" pythonw mortar_calc.py
 if %errorlevel% neq 0 (
-    python mortar_calc.py
+    start "" python mortar_calc.py
 )

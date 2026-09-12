@@ -4,7 +4,13 @@ All notable changes to the War Dogs Mortar Calculator project are documented in 
 
 ---
 
-### Minimize Button & Keybinding Auto-Persistence
+### Taskbar & External Shortcut Support
+- **Working Directory Resolution**: Added `cd /d "%~dp0"` to [`launch.bat`](file:///c:/Users/G0frik/wardogs_mortar_calc/launch.bat) to ensure it executes reliably when invoked from external shortcuts, Taskbar pins, or `System32`.
+- **Git Ignore**: Added `*.lnk` to [`.gitignore`](file:///c:/Users/G0frik/wardogs_mortar_calc/.gitignore) to exclude local Windows shortcut files.
+
+---
+
+### [`5836ed5`](https://github.com/G0frik/wardogs_mortar_calc/commit/5836ed5) - Minimize Button & Keybinding Auto-Persistence
 - **Header Layout**: Swapped header controls so Hide button (`─`) sits directly next to Close button (`✕`), followed by Expand (`▲`/`▼`) and Settings (`⚙`).
 - **Global Toggle Hotkey**: Added customizable global hotkey (default <kbd>F4</kbd>) to show or hide overlay at any time in-game.
 - **Instant Keybind Auto-Save**: Rebinding or unbinding keys now auto-saves immediately to memory and `settings.json` without requiring manual "Save & Apply".
