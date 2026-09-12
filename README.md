@@ -49,6 +49,9 @@ No coding knowledge required. Follow these steps:
 Switch language with the `🇺🇦 UA` / `🇬🇧 EN` buttons.
 
 #### Supported Callouts:
+- **Two-Step Voice Arming (Hands-Free)**:
+  - Say `"Start"` (or `"Target"`) alone → system arms the field for 7 seconds and glows blue/pink.
+  - Speak numbers in one phrase (`"12 24"`) or in separate chunks (`"12"`, then `"24"`) → auto-appends and calculates!
 - **Digit-by-digit**: Say numbers one by one:
   - `"target one two four three three eight nine five"` → Target: `12,43 38,95`
   - Or hold <kbd>V</kbd> and just say digits: `"one two four three three eight nine five"`
@@ -112,6 +115,9 @@ Switch language with the `🇺🇦 UA` / `🇬🇧 EN` buttons.
 Перемикайте мову кнопками `🇺🇦 UA` / `🇬🇧 EN` у вікні.
 
 #### Формати диктування:
+- **Двоетапний запис (без рук)**:
+  - Скажіть просто *"Старт"* (або *"Ціль"*) → відповідне поле підсвічується і очікує координати 7 секунд.
+  - Продиктуйте цифри разом (*"12 24"*) або частинами (*"12"*, потім *"24"*) → калькулятор автоматично допише їх у поле та виконає розрахунок!
 - **По одній цифрі (найзручніше під час бою)**:
   - *"ціль один два чотири три три вісім дев'ять п'ять"* → Ціль: `12,43 38,95`
   - Або затисніть <kbd>V</kbd> і просто диктуйте: *"один два чотири три три вісім дев'ять п'ять"*

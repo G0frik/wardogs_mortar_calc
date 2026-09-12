@@ -173,6 +173,12 @@ class MortarCalcWidget(tk.Tk):
             on_status=self._on_voice_status_async
         )
 
+        # Voice Role Arming & Progressive Coordinate Assembly State Machine
+        self.pending_voice_role = None     # None, "start", or "target"
+        self.pending_voice_text = ""       # Currently accumulated voice text in armed session
+        self.pending_voice_timer = None    # Timer ID for auto-disarm timeout
+        self.PENDING_VOICE_TIMEOUT_MS = 7000  # 7 seconds window to say numbers
+
         # Global Hotkey Manager
         self.hotkey_mgr = GlobalHotkeyManager(
             on_ptt_press=self._on_global_ptt_down,
@@ -637,17 +643,132 @@ class MortarCalcWidget(tk.Tk):
         self.lbl_transcript.config(text=truncated, fg=self.COLOR_TEXT)
 
     def _update_voice_status(self, msg):
+        if self.pending_voice_role and msg.lower() in ("ready", "transcribing...", "listening..."):
+            return
         self.lbl_transcript.config(text=msg[:32], fg=self.COLOR_MUTED)
 
+    def _arm_voice_role(self, role: str):
+        """Arms Start or Target role for voice input, remembering it for a few seconds."""
+        if self.pending_voice_timer:
+            try:
+                self.after_cancel(self.pending_voice_timer)
+            except Exception:
+                pass
+            self.pending_voice_timer = None
+
+        self.pending_voice_role = role
+        self.pending_voice_text = ""
+
+        if role == "start":
+            self.lbl_transcript.config(text="[START ARMED] Speak coordinates...", fg="#7dd3fc")
+            self.start_entry.config(highlightbackground="#38bdf8", highlightcolor="#38bdf8")
+            self.target_entry.config(highlightbackground="#2b3240", highlightcolor="#f472b6")
+        else:
+            self.lbl_transcript.config(text="[TARGET ARMED] Speak coordinates...", fg="#f472b6")
+            self.target_entry.config(highlightbackground="#f472b6", highlightcolor="#f472b6")
+            self.start_entry.config(highlightbackground="#2b3240", highlightcolor=self.COLOR_ACCENT)
+
+        self.pending_voice_timer = self.after(self.PENDING_VOICE_TIMEOUT_MS, lambda: self._disarm_voice_role(expired=True))
+        log_info(f"Voice role ARMED: [{role.upper()}] for {self.PENDING_VOICE_TIMEOUT_MS // 1000}s")
+
+    def _disarm_voice_role(self, expired=False):
+        """Disarms any pending voice role and restores default UI styles."""
+        if self.pending_voice_timer:
+            try:
+                self.after_cancel(self.pending_voice_timer)
+            except Exception:
+                pass
+            self.pending_voice_timer = None
+
+        if expired and self.pending_voice_role:
+            log_info(f"Voice role timeout expired: [{self.pending_voice_role.upper()}]")
+            self.lbl_transcript.config(text="Ready", fg=self.COLOR_MUTED)
+
+        self.pending_voice_role = None
+        self.pending_voice_text = ""
+        self.start_entry.config(highlightbackground="#2b3240", highlightcolor=self.COLOR_ACCENT)
+        self.target_entry.config(highlightbackground="#2b3240", highlightcolor="#f472b6")
+
+    def _combine_coords(self, existing: str, incoming: str) -> str:
+        """Combines two partial coordinate utterances cleanly."""
+        e = existing.strip()
+        i = incoming.strip()
+        if not e:
+            return i
+        if not i:
+            return e
+
+        # If both are single digits, combine e.g. "1" + "2" -> "12"
+        if e.isdigit() and len(e) == 1 and i.isdigit() and len(i) == 1:
+            return f"{e}{i}"
+
+        # If existing ends with a single digit and incoming is a single digit: "12 4" + "3" -> "12 43"
+        parts = e.split()
+        if parts and len(parts[-1]) == 1 and i.isdigit() and len(i) == 1:
+            return f"{e}{i}"
+
+        return f"{e} {i}"
+
+    def _handle_voice_numbers_for_role(self, role: str, incoming_coord: str):
+        if not incoming_coord:
+            return
+
+        target_entry = self.start_entry if role == 'start' else self.target_entry
+        role_label = "Start" if role == 'start' else "Target"
+        role_color = "#7dd3fc" if role == 'start' else "#f472b6"
+
+        # Check if we should append to text accumulated in this armed session
+        if self.pending_voice_role == role and self.pending_voice_text:
+            combined = self._combine_coords(self.pending_voice_text, incoming_coord)
+        else:
+            combined = incoming_coord
+
+        # Test if combined forms a complete valid coordinate
+        is_complete = bool(parse_coordinate_string(combined))
+
+        # Update entry widget
+        target_entry.delete(0, tk.END)
+        target_entry.insert(0, combined)
+        self._flash_widget(target_entry)
+
+        if is_complete:
+            # Full coordinate received! Calculate and disarm
+            self._disarm_voice_role(expired=False)
+            self.calculate()
+            self.lbl_transcript.config(text=f"{role_label}: {combined}", fg=role_color)
+            log_info(f"Voice applied full [{role_label}]: {combined}")
+        else:
+            # Partial coordinate (e.g. "12") -> Keep role armed and wait for next numbers!
+            self.pending_voice_role = role
+            self.pending_voice_text = combined
+            if self.pending_voice_timer:
+                try:
+                    self.after_cancel(self.pending_voice_timer)
+                except Exception:
+                    pass
+            self.pending_voice_timer = self.after(self.PENDING_VOICE_TIMEOUT_MS, lambda: self._disarm_voice_role(expired=True))
+            self.lbl_transcript.config(text=f"[{role_label.upper()}] {combined}... speak next part", fg=role_color)
+            log_info(f"Voice partial [{role_label}]: {combined} (waiting next part)")
+
     def _apply_voice_action(self, action):
+        if not action:
+            return
+
         act_type = action.get('type')
         if act_type == 'swap':
+            self._disarm_voice_role(expired=False)
             self.swap_coordinates()
         elif act_type == 'clear':
+            self._disarm_voice_role(expired=False)
             self.clear_all()
         elif act_type == 'copy':
             self.copy_result()
+        elif act_type == 'arm_start':
+            self._arm_voice_role('start')
+        elif act_type == 'arm_target':
+            self._arm_voice_role('target')
         elif act_type == 'set_both':
+            self._disarm_voice_role(expired=False)
             s = action.get('start', '')
             t = action.get('target', '')
             self.start_entry.delete(0, tk.END)
@@ -659,19 +780,15 @@ class MortarCalcWidget(tk.Tk):
             self._flash_widget(self.target_entry)
             self.lbl_transcript.config(text=f"S: {s} | T: {t}", fg=self.COLOR_ACCENT)
         elif act_type == 'set_start':
-            c = action.get('coord', '')
-            self.start_entry.delete(0, tk.END)
-            self.start_entry.insert(0, c)
-            self.calculate()
-            self._flash_widget(self.start_entry)
-            self.lbl_transcript.config(text=f"Start: {c}", fg="#7dd3fc")
-        elif act_type in ('set_target', 'raw_coord'):
-            c = action.get('coord', '')
-            self.target_entry.delete(0, tk.END)
-            self.target_entry.insert(0, c)
-            self.calculate()
-            self._flash_widget(self.target_entry)
-            self.lbl_transcript.config(text=f"Target: {c}", fg="#f472b6")
+            c = action.get('coord', '').strip()
+            self._handle_voice_numbers_for_role('start', c)
+        elif act_type == 'set_target':
+            c = action.get('coord', '').strip()
+            self._handle_voice_numbers_for_role('target', c)
+        elif act_type in ('coord_input', 'raw_coord'):
+            c = action.get('coord', '').strip()
+            role = self.pending_voice_role if self.pending_voice_role else 'target'
+            self._handle_voice_numbers_for_role(role, c)
 
     def _flash_widget(self, entry_widget):
         orig = entry_widget.cget("highlightbackground")
@@ -757,6 +874,7 @@ class MortarCalcWidget(tk.Tk):
         self.calculate()
 
     def clear_all(self):
+        self._disarm_voice_role(expired=False)
         self.start_entry.delete(0, tk.END)
         self.target_entry.delete(0, tk.END)
         self.calculate()
@@ -814,6 +932,7 @@ class MortarCalcWidget(tk.Tk):
 
     def _on_closing(self):
         log_info("Closing Wardogs Mortar Calculator overlay.")
+        self._disarm_voice_role(expired=False)
         self._save_win_position()
         self._save_resize()
         try:
