@@ -1,6 +1,6 @@
 # War Dogs Mortar Calculator 🎯
 
-[English](#english) | [Українська](#українська)
+[English](#english) | [Українська](#українська) | [Changelog](CHANGELOG.md)
 
 ---
 
