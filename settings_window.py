@@ -722,31 +722,35 @@ class SettingsWindow(tk.Toplevel):
                 parent=self
             )
 
+    def _save_all_settings_silent(self):
+        """Silently persists all settings dialog states to disk."""
+        try:
+            disp = self.combo_var.get()
+            dev_info = self.device_map.get(disp)
+            if dev_info:
+                self.main_app.settings["device_idx"] = dev_info['index']
+                self.main_app.settings["device_name"] = dev_info['name']
+
+            self.main_app.settings["ptt_general_key"] = self.ptt_gen_var.get().lower()
+            self.main_app.settings["ptt_start_key"] = self.ptt_start_var.get().lower()
+            self.main_app.settings["ptt_target_key"] = self.ptt_target_var.get().lower()
+            self.main_app.settings["toggle_hide_key"] = self.toggle_hide_var.get().lower()
+            self.main_app._sync_hotkeys_config()
+
+            self.main_app.settings["engine"] = self.selected_engine
+            self.main_app.settings["language"] = self.current_test_lang
+            
+            is_logging = self.log_enabled_var.get()
+            self.main_app.settings["enable_logging"] = is_logging
+            set_file_logging(is_logging)
+
+            save_settings(self.main_app.settings)
+        except Exception as e:
+            log_warning(f"Failed to auto-save settings: {e}")
+
     def _save_and_apply(self):
-        disp = self.combo_var.get()
-        dev_info = self.device_map.get(disp)
-        if dev_info:
-            self.main_app.settings["device_idx"] = dev_info['index']
-            self.main_app.settings["device_name"] = dev_info['name']
-
-        # Save PTT and HUD hotkeys
-        self.main_app.settings["ptt_general_key"] = self.ptt_gen_var.get().lower()
-        self.main_app.settings["ptt_start_key"] = self.ptt_start_var.get().lower()
-        self.main_app.settings["ptt_target_key"] = self.ptt_target_var.get().lower()
-        self.main_app.settings["toggle_hide_key"] = self.toggle_hide_var.get().lower()
-        self.main_app._sync_hotkeys_config()
-
-        self.main_app.settings["engine"] = self.selected_engine
-        self.main_app.settings["language"] = self.current_test_lang
-        
-        # Save logging preference
-        is_logging = self.log_enabled_var.get()
-        self.main_app.settings["enable_logging"] = is_logging
-        set_file_logging(is_logging)
-
-        save_settings(self.main_app.settings)
-
-        messagebox.showinfo("Settings Saved", "Settings & PTT Hotkeys saved successfully!", parent=self)
+        self._save_all_settings_silent()
+        messagebox.showinfo("Settings Saved", "Settings & Hotkeys saved successfully!", parent=self)
         self._on_close()
 
     # ==========================================
@@ -840,16 +844,31 @@ class SettingsWindow(tk.Toplevel):
         self._refresh_keybind_ui()
 
     def _sync_live_hotkeys(self):
-        """Immediately applies keybind changes to the hotkey manager for live testing."""
+        """Immediately applies and persists keybind changes to settings and hotkey manager."""
+        gen_k = self.ptt_gen_var.get().lower()
+        start_k = self.ptt_start_var.get().lower()
+        target_k = self.ptt_target_var.get().lower()
+        hide_k = self.toggle_hide_var.get().lower()
+
+        # Update main app settings in-memory
+        self.main_app.settings["ptt_general_key"] = gen_k
+        self.main_app.settings["ptt_start_key"] = start_k
+        self.main_app.settings["ptt_target_key"] = target_k
+        self.main_app.settings["toggle_hide_key"] = hide_k
+
+        # Reconfigure active live hotkey manager
         try:
             self.main_app.hotkey_mgr.configure(
-                general_key=self.ptt_gen_var.get(),
-                start_key=self.ptt_start_var.get(),
-                target_key=self.ptt_target_var.get(),
-                toggle_hide_key=self.toggle_hide_var.get()
+                general_key=gen_k,
+                start_key=start_k,
+                target_key=target_k,
+                toggle_hide_key=hide_k
             )
         except Exception:
             pass
+
+        # Persist immediately to disk so changes are never lost
+        save_settings(self.main_app.settings)
 
     def _refresh_keybind_ui(self):
         if not self.winfo_exists():
@@ -874,6 +893,7 @@ class SettingsWindow(tk.Toplevel):
             )
 
     def _on_close(self):
+        self._save_all_settings_silent()
         self._cancel_bind()
         self.voice_service.on_audio_level = None
         self.voice_service.on_raw_speech = None

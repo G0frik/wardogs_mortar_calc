@@ -4,10 +4,11 @@ All notable changes to the War Dogs Mortar Calculator project are documented in 
 
 ---
 
-### Minimize Button & In-Game Toggle Hotkey
-- **Hide Button**: Added `─` minimize/hide button in header bar to instantly withdraw overlay from screen.
+### Minimize Button & Keybinding Auto-Persistence
+- **Header Layout**: Swapped header controls so Hide button (`─`) sits directly next to Close button (`✕`), followed by Expand (`▲`/`▼`) and Settings (`⚙`).
 - **Global Toggle Hotkey**: Added customizable global hotkey (default <kbd>F4</kbd>) to show or hide overlay at any time in-game.
-- **Settings Integration**: Added interactive click-to-bind, unbind `[✕]`, and persistent configuration for Hide/Show hotkey in Settings.
+- **Instant Keybind Auto-Save**: Rebinding or unbinding keys now auto-saves immediately to memory and `settings.json` without requiring manual "Save & Apply".
+- **Settings Auto-Persistence**: Closing Settings window via `✕` or Esc automatically persists all options so changes are never lost.
 
 ---
 

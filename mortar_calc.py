@@ -281,21 +281,6 @@ class MortarCalcWidget(tk.Tk):
         )
         btn_close.pack(side=tk.RIGHT, padx=(0, 2))
 
-        self.btn_expand = tk.Button(
-            self.header_bar,
-            text="▲" if not self.is_compact else "▼",
-            font=("Segoe UI", 7),
-            bg=self.COLOR_HEADER,
-            fg=self.COLOR_TEXT,
-            activebackground="#2c3340",
-            relief=tk.FLAT,
-            padx=4,
-            pady=0,
-            cursor="hand2",
-            command=self.toggle_compact_mode
-        )
-        self.btn_expand.pack(side=tk.RIGHT, padx=1)
-
         btn_hide = tk.Button(
             self.header_bar,
             text="─",
@@ -310,6 +295,21 @@ class MortarCalcWidget(tk.Tk):
             command=self.hide_hud
         )
         btn_hide.pack(side=tk.RIGHT, padx=1)
+
+        self.btn_expand = tk.Button(
+            self.header_bar,
+            text="▲" if not self.is_compact else "▼",
+            font=("Segoe UI", 7),
+            bg=self.COLOR_HEADER,
+            fg=self.COLOR_TEXT,
+            activebackground="#2c3340",
+            relief=tk.FLAT,
+            padx=4,
+            pady=0,
+            cursor="hand2",
+            command=self.toggle_compact_mode
+        )
+        self.btn_expand.pack(side=tk.RIGHT, padx=1)
 
         btn_settings = tk.Button(
             self.header_bar,
@@ -675,7 +675,10 @@ class MortarCalcWidget(tk.Tk):
             except Exception:
                 pass
         hide_key = self.settings.get("toggle_hide_key", "f4")
-        log_info(f"HUD hidden. Press [{format_key_display(hide_key)}] to show again.")
+        if hide_key and hide_key.lower() not in ("none", "0", ""):
+            log_info(f"HUD hidden. Press [{format_key_display(hide_key)}] to show again.")
+        else:
+            log_info("HUD hidden. (No restore hotkey bound).")
 
     def show_hud(self):
         """Restores and shows the HUD overlay window on top."""
